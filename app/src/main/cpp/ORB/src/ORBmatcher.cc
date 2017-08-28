@@ -66,7 +66,7 @@ int ORBmatcher::SearchByProjection(Frame &F, const vector<MapPoint*> &vpMapPoint
             r*=th;
 
         const vector<size_t> vIndices =
-                F.GetFeaturesInArea(pMP->mTrackProjX,pMP->mTrackProjY,r*F.mvScaleFactors[nPredictedLevel],nPredictedLevel-1,nPredictedLevel);   //该mappoint投影到当前帧的坐标，以半径为r的搜索特征点，返回特征点索引
+                F.GetFeaturesInArea(pMP->mTrackProjX,pMP->mTrackProjY,r*F.mvScaleFactors[nPredictedLevel],nPredictedLevel-1,nPredictedLevel);   //该mappoint投影到当前帧的坐标，以半径为r的搜索特征点，返回邻近特征点索引
 
         if(vIndices.empty())
             continue;
@@ -98,7 +98,7 @@ int ORBmatcher::SearchByProjection(Frame &F, const vector<MapPoint*> &vpMapPoint
 
             const cv::Mat &d = F.mDescriptors.row(idx);
 
-            const int dist = DescriptorDistance(MPdescriptor,d);        //获取描述子距离
+            const int dist = DescriptorDistance(MPdescriptor,d);        //获取路标的描述子与当前帧对应的描述子距离
 
             // 根据描述子寻找描述子距离最小和次小的特征点
             if(dist<bestDist)

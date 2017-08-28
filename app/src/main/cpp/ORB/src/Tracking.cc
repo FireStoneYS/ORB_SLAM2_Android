@@ -961,10 +961,10 @@ bool Tracking::TrackLocalMap()
 
     UpdateLocalMap();   //更新局部关键帧和mappoint
 
-    SearchLocalPoints();
+    SearchLocalPoints();    //将局部地图的路标和当前帧的特征点对应起来
 
     // Optimize Pose
-    Optimizer::PoseOptimization(&mCurrentFrame);
+    Optimizer::PoseOptimization(&mCurrentFrame);    //优化当前帧的位姿
     mnMatchesInliers = 0;
 
     // Update MapPoints Statistics
