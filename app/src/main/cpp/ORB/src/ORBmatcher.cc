@@ -1345,14 +1345,14 @@ int ORBmatcher::SearchByProjection(Frame &CurrentFrame, const Frame &LastFrame, 
     const cv::Mat Rcw = CurrentFrame.mTcw.rowRange(0,3).colRange(0,3);
     const cv::Mat tcw = CurrentFrame.mTcw.rowRange(0,3).col(3);
 
-    const cv::Mat twc = -Rcw.t()*tcw;
+    const cv::Mat twc = -Rcw.t()*tcw;       //当前帧的光心坐标
 
     const cv::Mat Rlw = LastFrame.mTcw.rowRange(0,3).colRange(0,3);
     const cv::Mat tlw = LastFrame.mTcw.rowRange(0,3).col(3);
 
-    const cv::Mat tlc = Rlw*twc+tlw;
+    const cv::Mat tlc = Rlw*twc+tlw;        //当前帧光心坐标变到上一帧的坐标中，其实也就是上一帧的光心指向当前帧的光心的向量
 
-    const bool bForward = tlc.at<float>(2)>CurrentFrame.mb && !bMono;
+    const bool bForward = tlc.at<float>(2)>CurrentFrame.mb && !bMono;       //通过当前帧在上一帧坐标中的z值判断是向前还是向后
     const bool bBackward = -tlc.at<float>(2)>CurrentFrame.mb && !bMono;
 
     for(int i=0; i<LastFrame.N; i++)
@@ -1389,11 +1389,14 @@ int ORBmatcher::SearchByProjection(Frame &CurrentFrame, const Frame &LastFrame, 
 
                 vector<size_t> vIndices2;
 
-                if(bForward)
+
+                //在尺度m下检测到一个特征点，现在往前走，在同样m的尺度下，特征点面积增大，就不再是特征点了，所以需要在更高尺度下才能观测到
+                //所以前进后在n尺度下观测到特征点的话，n与m的关系就应该是，n>m
+                if(bForward)        //前进，lastOctave<CurrentOctave
                     vIndices2 = CurrentFrame.GetFeaturesInArea(u,v, radius, nLastOctave);
-                else if(bBackward)
+                else if(bBackward)  //后退,0<= CurrentOctvae<lastOctave
                     vIndices2 = CurrentFrame.GetFeaturesInArea(u,v, radius, 0, nLastOctave);
-                else
+                else            //既不是前进也不是后退   lastOctave-1<= CurrentOctave <= lastOctave+1
                     vIndices2 = CurrentFrame.GetFeaturesInArea(u,v, radius, nLastOctave-1, nLastOctave+1);
 
                 if(vIndices2.empty())
@@ -1404,9 +1407,9 @@ int ORBmatcher::SearchByProjection(Frame &CurrentFrame, const Frame &LastFrame, 
                 int bestDist = 256;
                 int bestIdx2 = -1;
 
-                for(vector<size_t>::const_iterator vit=vIndices2.begin(), vend=vIndices2.end(); vit!=vend; vit++)
+                for(vector<size_t>::const_iterator vit=vIndices2.begin(), vend=vIndices2.end(); vit!=vend; vit++)   //筛选当前帧中在同一方格内与上一帧的mappoint描述子距离最小的那个特征点
                 {
-                    const size_t i2 = *vit;
+                    const size_t i2 = *vit;         //就是mappoint的index
                     if(CurrentFrame.mvpMapPoints[i2])
                         if(CurrentFrame.mvpMapPoints[i2]->Observations()>0)
                             continue;
@@ -1454,7 +1457,7 @@ int ORBmatcher::SearchByProjection(Frame &CurrentFrame, const Frame &LastFrame, 
 
 
     //Apply rotation consistency
-    if(mbCheckOrientation)
+    if(mbCheckOrientation)          //角度筛选，保留最多的三个角度范围内的匹配点
     {
         int ind1=-1;
         int ind2=-1;

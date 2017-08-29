@@ -853,26 +853,26 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
 {
     allKeypoints.resize(nlevels);
 
-    /*
-    vector<thread> computeKeyPointsThreads;
 
-    for (int i = 0; i < nlevels; ++i) {
-        computeKeyPointsThreads.push_back(thread(&ORBextractor::ComputeKeyPointsOctTreeEveryLevel, this, i, std::ref(allKeypoints)));
-    }
+//    vector<thread> computeKeyPointsThreads;
+//
+//    for (int i = 0; i < nlevels; ++i) {
+//        computeKeyPointsThreads.push_back(thread(&ORBextractor::ComputeKeyPointsOctTreeEveryLevel, this, i, std::ref(allKeypoints)));
+//    }
+//
+//    for (int i = 0; i < nlevels; ++i) {
+//        computeKeyPointsThreads[i].join();
+//    }
+//
+//    vector<thread> computeOriThreads;
+//    for (int level = 0; level < nlevels; ++level) {
+//        computeOriThreads.push_back(thread(computeOrientation, mvImagePyramid[level], std::ref(allKeypoints[level]), umax));
+//    }
+//
+//    for (int level = 0; level < nlevels; ++level) {
+//        computeOriThreads[level].join();
+//    }
 
-    for (int i = 0; i < nlevels; ++i) {
-        computeKeyPointsThreads[i].join();
-    }
-
-    vector<thread> computeOriThreads;
-    for (int level = 0; level < nlevels; ++level) {
-        computeOriThreads.push_back(thread(computeOrientation, mvImagePyramid[level], std::ref(allKeypoints[level]), umax));
-    }
-
-    for (int level = 0; level < nlevels; ++level) {
-        computeOriThreads[level].join();
-    }
-     */
 
     const float W = 30;
 //#pragma omp parallel for
