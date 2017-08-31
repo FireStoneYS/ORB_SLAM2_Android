@@ -138,7 +138,7 @@ void PnPsolver::SetRansacParameters(double probability, int minInliers, int maxI
     mvbInliersi.resize(N);
 
     // Adjust Parameters according to number of correspondences
-    int nMinInliers = N*mRansacEpsilon;
+    int nMinInliers = N*mRansacEpsilon;         //将mRansacMinInliers设为N*epsilon,minInliers,minSet中最大的那个值
     if(nMinInliers<mRansacMinInliers)
         nMinInliers=mRansacMinInliers;
     if(nMinInliers<minSet)
@@ -151,15 +151,15 @@ void PnPsolver::SetRansacParameters(double probability, int minInliers, int maxI
     // Set RANSAC iterations according to probability, epsilon, and max iterations
     int nIterations;
 
-    if(mRansacMinInliers==N)
+    if(mRansacMinInliers==N)    //根据期望的残差大小来计算RANSAC需要迭代的次数
         nIterations=1;
     else
-        nIterations = ceil(log(1-mRansacProb)/log(1-pow(mRansacEpsilon,3)));
+        nIterations = ceil(log(1-mRansacProb)/log(1-pow(mRansacEpsilon,3)));        //置信度为0.99，子集为3，内点概率0.5，迭代次数35，P76 at MVG中文版
 
     mRansacMaxIts = max(1,min(nIterations,mRansacMaxIts));
 
     mvMaxError.resize(mvSigma2.size());
-    for(size_t i=0; i<mvSigma2.size(); i++)
+    for(size_t i=0; i<mvSigma2.size(); i++)// 不同的尺度，设置不同的最大偏差
         mvMaxError[i] = mvSigma2[i]*th2;
 }
 
@@ -230,7 +230,7 @@ cv::Mat PnPsolver::iterate(int nIterations, bool &bNoMore, vector<bool> &vbInlie
                 tcw.copyTo(mBestTcw.rowRange(0,3).col(3));
             }
 
-            if(Refine())
+            if(Refine())            //将Inlier的点再次计算模型参数，看新模型下inlier是否还满足要求
             {
                 nInliers = mnRefinedInliers;
                 vbInliers = vector<bool>(mvpMapPointMatches.size(),false);
@@ -316,7 +316,7 @@ void PnPsolver::CheckInliers()
 {
     mnInliersi=0;
 
-    for(int i=0; i<N; i++)
+    for(int i=0; i<N; i++)          //世界坐标转到像素坐标下
     {
         cv::Point3f P3Dw = mvP3Dw[i];
         cv::Point2f P2D = mvP2D[i];
@@ -331,9 +331,9 @@ void PnPsolver::CheckInliers()
         float distX = P2D.x-ue;
         float distY = P2D.y-ve;
 
-        float error2 = distX*distX+distY*distY;
+        float error2 = distX*distX+distY*distY;     //计算像素距离偏差
 
-        if(error2<mvMaxError[i])
+        if(error2<mvMaxError[i])        //记录inlier的个数
         {
             mvbInliersi[i]=true;
             mnInliersi++;
@@ -383,12 +383,12 @@ void PnPsolver::choose_control_points(void)
 {
   // Take C0 as the reference points centroid:
   cws[0][0] = cws[0][1] = cws[0][2] = 0;
-  for(int i = 0; i < number_of_correspondences; i++)
+  for(int i = 0; i < number_of_correspondences; i++)        //4对点的情况
     for(int j = 0; j < 3; j++)
       cws[0][j] += pws[3 * i + j];
 
   for(int j = 0; j < 3; j++)
-    cws[0][j] /= number_of_correspondences;
+    cws[0][j] /= number_of_correspondences;         //第零行保存的是质心
 
 
   // Take C1, C2, and C3 from PCA on the reference points:
@@ -401,17 +401,17 @@ void PnPsolver::choose_control_points(void)
 
   for(int i = 0; i < number_of_correspondences; i++)
     for(int j = 0; j < 3; j++)
-      PW0->data.db[3 * i + j] = pws[3 * i + j] - cws[0][j];
+      PW0->data.db[3 * i + j] = pws[3 * i + j] - cws[0][j];     //PW0中保存4个点去质心后的坐标值
 
-  cvMulTransposed(PW0, &PW0tPW0, 1);
-  cvSVD(&PW0tPW0, &DC, &UCt, 0, CV_SVD_MODIFY_A | CV_SVD_U_T);
+  cvMulTransposed(PW0, &PW0tPW0, 1);                        //PW0的转置*PW0,放在PW0tPW0中,即求去中心后的协方差矩阵
+  cvSVD(&PW0tPW0, &DC, &UCt, 0, CV_SVD_MODIFY_A | CV_SVD_U_T);      // A=U*W*VT; cvSVD(A, W, U, V, flags); W(DC):3*1; U(UCt):3*3; V:0（表示不返回V的值）
 
   cvReleaseMat(&PW0);
 
   for(int i = 1; i < 4; i++) {
-    double k = sqrt(dc[i - 1] / number_of_correspondences);
+    double k = sqrt(dc[i - 1] / number_of_correspondences);         //PW0的奇异值
     for(int j = 0; j < 3; j++)
-      cws[i][j] = cws[0][j] + k * uct[3 * (i - 1) + j];
+      cws[i][j] = cws[0][j] + k * uct[3 * (i - 1) + j];             //cws每行保存了选取的控制点的坐标下xyz,共四个控制点
   }
 }
 
@@ -421,6 +421,14 @@ void PnPsolver::compute_barycentric_coordinates(void)
   CvMat CC     = cvMat(3, 3, CV_64F, cc);
   CvMat CC_inv = cvMat(3, 3, CV_64F, cc_inv);
 
+    // cws的排列 |cws1_x cws1_y cws1_z|  ---> |cws1|
+    //          |cws2_x cws2_y cws2_z|       |cws2|
+    //          |cws3_x cws3_y cws3_z|       |cws3|
+    //          |cws4_x cws4_y cws4_z|       |cws4|
+    //从行排列改成列排列
+    //      | cws1_x-cws0_x  cws2_x-cws0_x  cws3_x-cws0_x |    cws0为世界坐标系下的中心控制点
+    // CC = | cws1_y-cws0_y  cws2_y-cws0_y  cws3_y-cws0_y |    cws1 cws2 cws3为世界坐标系下的其他控制点
+    //      | cws1_z-cws0_z  cws2_z-cws0_z  cws3_z-cws0_z |
   for(int i = 0; i < 3; i++)
     for(int j = 1; j < 4; j++)
       cc[3 * i + j - 1] = cws[j][i] - cws[0][i];
@@ -431,6 +439,13 @@ void PnPsolver::compute_barycentric_coordinates(void)
     double * pi = pws + 3 * i;
     double * a = alphas + 4 * i;
 
+      //也就是求出了alphas
+      // |ai_1|      -1   |pi_x-cws0_x|    pi为世界坐标系下的3d点
+      // |ai_2| =  CC   * |pi_y-cws0_y|
+      // |ai_3|           |pi_z-cws0_z|
+      //  ai_0 = 1 - ai_1 - ai_2 - ai_3
+
+      //  pi = ai_0*cws0 + ai_1*cws1 + ai_2*cws2 + ai_3*cws3;
     for(int j = 0; j < 3; j++)
       a[1 + j] =
 	ci[3 * j    ] * (pi[0] - cws[0][0]) +
@@ -439,6 +454,12 @@ void PnPsolver::compute_barycentric_coordinates(void)
     a[0] = 1.0f - a[1] - a[2] - a[3];
   }
 }
+
+// 填充最小二乘的M矩阵
+// 对每一个3D参考点：
+// |ai1 0    -ai1*ui, ai2  0    -ai2*ui, ai3 0   -ai3*ui, ai4 0   -ai4*ui|
+// |0   ai1  -ai1*vi, 0    ai2  -ai2*vi, 0   ai3 -ai3*vi, 0   ai4 -ai4*vi|
+// 其中i从0到4
 
 void PnPsolver::fill_M(CvMat * M,
 		  const int row, const double * as, const double u, const double v)

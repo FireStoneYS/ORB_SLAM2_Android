@@ -124,7 +124,7 @@ cv::Mat KeyFrame::GetTranslation()
     unique_lock<mutex> lock(mMutexPose);
     return Tcw.rowRange(0,3).col(3).clone();
 }
-
+//添加关键帧之间的联系，更新最佳公视
 void KeyFrame::AddConnection(KeyFrame *pKF, const int &weight)
 {
     {
@@ -139,16 +139,16 @@ void KeyFrame::AddConnection(KeyFrame *pKF, const int &weight)
 
     UpdateBestCovisibles();
 }
-
+//更新公视关系的排序
 void KeyFrame::UpdateBestCovisibles()
 {
     unique_lock<mutex> lock(mMutexConnections);
-    vector<pair<int,KeyFrame*> > vPairs;
+    vector<pair<int,KeyFrame*> > vPairs;        //<权重,关键帧>
     vPairs.reserve(mConnectedKeyFrameWeights.size());
     for(map<KeyFrame*,int>::iterator mit=mConnectedKeyFrameWeights.begin(), mend=mConnectedKeyFrameWeights.end(); mit!=mend; mit++)
        vPairs.push_back(make_pair(mit->second,mit->first));
 
-    sort(vPairs.begin(),vPairs.end());
+    sort(vPairs.begin(),vPairs.end());  //sort是从小往大排，就为了权重从大往小排搞了个list，因为list可以push_front
     list<KeyFrame*> lKFs;
     list<int> lWs;
     for(size_t i=0, iend=vPairs.size(); i<iend;i++)
@@ -291,10 +291,18 @@ MapPoint* KeyFrame::GetMapPoint(const size_t &idx)
     unique_lock<mutex> lock(mMutexFeatures);
     return mvpMapPoints[idx];
 }
-
+/**
+ * @brief 更新图的连接
+ *
+ * 1. 首先获得该关键帧的所有MapPoint点，统计观测到这些3d点的每个关键与其它所有关键帧之间的共视程度
+ *    对每一个找到的关键帧，建立一条边，边的权重是该关键帧与当前关键帧公共3d点的个数。
+ * 2. 并且该权重必须大于一个阈值，如果没有超过该阈值的权重，那么就只保留权重最大的边（与其它关键帧的共视程度比较高）
+ * 3. 对这些连接按照权重从大到小进行排序，以方便将来的处理
+ *    更新完covisibility图之后，如果没有初始化过，则初始化为连接权重最大的边（与其它关键帧共视程度最高的那个关键帧），类似于最大生成树
+ */
 void KeyFrame::UpdateConnections()
 {
-    map<KeyFrame*,int> KFcounter;
+    map<KeyFrame*,int> KFcounter;       //<关键帧,权重>  权重即是观测到相同mappoint的个数
 
     vector<MapPoint*> vpMP;
 
@@ -305,6 +313,7 @@ void KeyFrame::UpdateConnections()
 
     //For all map points in keyframe check in which other keyframes are they seen
     //Increase counter for those keyframes
+    //遍历当前关键帧的mappoint，记录与其他关键帧共视点的个数
     for(vector<MapPoint*>::iterator vit=vpMP.begin(), vend=vpMP.end(); vit!=vend; vit++)
     {
         MapPoint* pMP = *vit;
@@ -335,7 +344,7 @@ void KeyFrame::UpdateConnections()
     KeyFrame* pKFmax=NULL;
     int th = 15;
 
-    vector<pair<int,KeyFrame*> > vPairs;
+    vector<pair<int,KeyFrame*> > vPairs;        //pair<个数,关键帧>，公视点大于15，保存到此数组中
     vPairs.reserve(KFcounter.size());
     for(map<KeyFrame*,int>::iterator mit=KFcounter.begin(), mend=KFcounter.end(); mit!=mend; mit++)
     {
@@ -347,11 +356,11 @@ void KeyFrame::UpdateConnections()
         if(mit->second>=th)
         {
             vPairs.push_back(make_pair(mit->second,mit->first));
-            (mit->first)->AddConnection(this,mit->second);
+            (mit->first)->AddConnection(this,mit->second);      //添加KFcounter中关键帧与当前帧的联系
         }
     }
 
-    if(vPairs.empty())
+    if(vPairs.empty())      //如果与所有关键帧的公视点数都小于15，那在数组里保存最优的解
     {
         vPairs.push_back(make_pair(nmax,pKFmax));
         pKFmax->AddConnection(this,nmax);
@@ -360,7 +369,7 @@ void KeyFrame::UpdateConnections()
     sort(vPairs.begin(),vPairs.end());
     list<KeyFrame*> lKFs;
     list<int> lWs;
-    for(size_t i=0; i<vPairs.size();i++)
+    for(size_t i=0; i<vPairs.size();i++)            //按权重从大到小排列
     {
         lKFs.push_front(vPairs[i].second);
         lWs.push_front(vPairs[i].first);
@@ -370,14 +379,14 @@ void KeyFrame::UpdateConnections()
         unique_lock<mutex> lockCon(mMutexConnections);
 
         // mspConnectedKeyFrames = spConnectedKeyFrames;
-        mConnectedKeyFrameWeights = KFcounter;
-        mvpOrderedConnectedKeyFrames = vector<KeyFrame*>(lKFs.begin(),lKFs.end());
-        mvOrderedWeights = vector<int>(lWs.begin(), lWs.end());
+        mConnectedKeyFrameWeights = KFcounter;                                          //更新当前关键帧与其他关键帧的权重关系
+        mvpOrderedConnectedKeyFrames = vector<KeyFrame*>(lKFs.begin(),lKFs.end());      //保存权重从大到小排列的公视关键帧
+        mvOrderedWeights = vector<int>(lWs.begin(), lWs.end());                         //保存权重
 
-        if(mbFirstConnection && mnId!=0)
+        if(mbFirstConnection && mnId!=0)                                //如果是第一次添加关系
         {
-            mpParent = mvpOrderedConnectedKeyFrames.front();
-            mpParent->AddChild(this);
+            mpParent = mvpOrderedConnectedKeyFrames.front();            //父帧为公视关系最高的那个
+            mpParent->AddChild(this);                                   //将当前关键帧添加为父帧的子帧
             mbFirstConnection = false;
         }
 
@@ -658,14 +667,14 @@ float KeyFrame::ComputeSceneMedianDepth(const int q)
         {
             MapPoint* pMP = mvpMapPoints[i];
             cv::Mat x3Dw = pMP->GetWorldPos();
-            float z = Rcw2.dot(x3Dw)+zcw;
+            float z = Rcw2.dot(x3Dw)+zcw;       //mappoint在当前帧下的深度
             vDepths.push_back(z);
         }
     }
 
-    sort(vDepths.begin(),vDepths.end());
+    sort(vDepths.begin(),vDepths.end());        //深度排序
 
-    return vDepths[(vDepths.size()-1)/q];
+    return vDepths[(vDepths.size()-1)/q];       //返回深度中值
 }
 
 } //namespace ORB_SLAM

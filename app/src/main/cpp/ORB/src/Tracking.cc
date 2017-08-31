@@ -1184,7 +1184,7 @@ void Tracking::CreateNewKeyFrame()
         }
     }
 
-    mpLocalMapper->InsertKeyFrame(pKF);     //添加当前帧为关键帧
+    mpLocalMapper->InsertKeyFrame(pKF);     //添加当前帧为备选关键帧
 
     mpLocalMapper->SetNotStop(false);
 
@@ -1424,11 +1424,11 @@ bool Tracking::Relocalization()
     {
         KeyFrame* pKF = vpCandidateKFs[i];
         if(pKF->isBad())
-            vbDiscarded[i] = true;
+            vbDiscarded[i] = true;      //丢弃标志位
         else
         {
-            int nmatches = matcher.SearchByBoW(pKF,mCurrentFrame,vvpMapPointMatches[i]);
-            if(nmatches<15)
+            int nmatches = matcher.SearchByBoW(pKF,mCurrentFrame,vvpMapPointMatches[i]);    //将重定位备选关键帧与当前帧通过bow进行匹配
+            if(nmatches<15)     //匹配到的mappoint小于15，丢弃此关键帧
             {
                 vbDiscarded[i] = true;
                 continue;
@@ -1464,6 +1464,7 @@ bool Tracking::Relocalization()
             cv::Mat Tcw = pSolver->iterate(5,bNoMore,vbInliers,nInliers);
 
             // If Ransac reachs max. iterations discard keyframe
+            //如果Ransac迭代次数达到最大，就丢弃这一关键帧，候选计数减1
             if(bNoMore)
             {
                 vbDiscarded[i]=true;
@@ -1479,7 +1480,7 @@ bool Tracking::Relocalization()
 
                 const int np = vbInliers.size();
 
-                for(int j=0; j<np; j++)
+                for(int j=0; j<np; j++) //将关键帧inlier的点加入当前帧的mappoint中
                 {
                     if(vbInliers[j])
                     {
@@ -1490,26 +1491,27 @@ bool Tracking::Relocalization()
                         mCurrentFrame.mvpMapPoints[j]=NULL;
                 }
 
-                int nGood = Optimizer::PoseOptimization(&mCurrentFrame);
+                int nGood = Optimizer::PoseOptimization(&mCurrentFrame);    //优化当前帧位姿
 
                 if(nGood<10)
                     continue;
 
-                for(int io =0; io<mCurrentFrame.N; io++)
+                for(int io =0; io<mCurrentFrame.N; io++)        //剔除优化后的outlier
                     if(mCurrentFrame.mvbOutlier[io])
                         mCurrentFrame.mvpMapPoints[io]=static_cast<MapPoint*>(NULL);
 
                 // If few inliers, search by projection in a coarse window and optimize again
                 if(nGood<50)
                 {
-                    int nadditional =matcher2.SearchByProjection(mCurrentFrame,vpCandidateKFs[i],sFound,10,100);
+                    int nadditional =matcher2.SearchByProjection(mCurrentFrame,vpCandidateKFs[i],sFound,10,100);    //关键帧与当前帧进行投影匹配
 
                     if(nadditional+nGood>=50)
                     {
-                        nGood = Optimizer::PoseOptimization(&mCurrentFrame);
+                        nGood = Optimizer::PoseOptimization(&mCurrentFrame);        //重新优化匹配后的位姿
 
                         // If many inliers but still not enough, search by projection again in a narrower window
                         // the camera has been already optimized with many points
+                        //如果内点还是不够，那就缩小投影搜索范围
                         if(nGood>30 && nGood<50)
                         {
                             sFound.clear();

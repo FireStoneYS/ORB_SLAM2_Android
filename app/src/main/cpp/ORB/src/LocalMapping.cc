@@ -164,7 +164,7 @@ void LocalMapping::ProcessNewKeyFrame()
         {
             if(!pMP->isBad())
             {
-                if(!pMP->IsInKeyFrame(mpCurrentKeyFrame))
+                if(!pMP->IsInKeyFrame(mpCurrentKeyFrame))       //该mappoint不在当前keyframe中
                 {
                     pMP->AddObservation(mpCurrentKeyFrame, i);
                     pMP->UpdateNormalAndDepth();
@@ -172,17 +172,17 @@ void LocalMapping::ProcessNewKeyFrame()
                 }
                 else // this can only happen for new stereo points inserted by the Tracking
                 {
-                    mlpRecentAddedMapPoints.push_back(pMP);
+                    mlpRecentAddedMapPoints.push_back(pMP);     //当前关键帧观测到的mappoint
                 }
             }
         }
     }    
 
     // Update links in the Covisibility Graph
-    mpCurrentKeyFrame->UpdateConnections();
+    mpCurrentKeyFrame->UpdateConnections();     //更新当前关键帧与其他公视关键帧的权重关系
 
     // Insert Keyframe in Map
-    mpMap->AddKeyFrame(mpCurrentKeyFrame);
+    mpMap->AddKeyFrame(mpCurrentKeyFrame);      //添加当前关键帧到地图中
 }
 
 void LocalMapping::MapPointCulling()
@@ -205,12 +205,12 @@ void LocalMapping::MapPointCulling()
         {
             lit = mlpRecentAddedMapPoints.erase(lit);
         }
-        else if(pMP->GetFoundRatio()<0.25f )
+        else if(pMP->GetFoundRatio()<0.25f )// 跟踪到该MapPoint的Frame数相比预计可观测到该MapPoint的Frame数的比例小于25%就剔除，跟踪和观测的来源不一定是关键帧
         {
             pMP->SetBadFlag();
             lit = mlpRecentAddedMapPoints.erase(lit);
         }
-        else if(((int)nCurrentKFid-(int)pMP->mnFirstKFid)>=2 && pMP->Observations()<=cnThObs)
+        else if(((int)nCurrentKFid-(int)pMP->mnFirstKFid)>=2 && pMP->Observations()<=cnThObs)       //距第一次观测到该点的关键帧已经大于两帧，观测个数小于3(cnThObs)帧
         {
             pMP->SetBadFlag();
             lit = mlpRecentAddedMapPoints.erase(lit);
@@ -260,13 +260,13 @@ void LocalMapping::CreateNewMapPoints()
         KeyFrame* pKF2 = vpNeighKFs[i];
 
         // Check first that baseline is not too short
-        cv::Mat Ow2 = pKF2->GetCameraCenter();
-        cv::Mat vBaseline = Ow2-Ow1;
-        const float baseline = cv::norm(vBaseline);
+        cv::Mat Ow2 = pKF2->GetCameraCenter();      //公视帧的世界坐标
+        cv::Mat vBaseline = Ow2-Ow1;                //当前帧的光心指向公视帧光心的向量
+        const float baseline = cv::norm(vBaseline); //向量模长
 
         if(!mbMonocular)
         {
-            if(baseline<pKF2->mb)
+            if(baseline<pKF2->mb)      //如果两帧之间距离太近舍弃
             continue;
         }
         else
