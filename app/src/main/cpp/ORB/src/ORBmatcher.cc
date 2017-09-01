@@ -671,10 +671,10 @@ int ORBmatcher::SearchForTriangulation(KeyFrame *pKF1, KeyFrame *pKF2, cv::Mat F
     cv::Mat Cw = pKF1->GetCameraCenter();
     cv::Mat R2w = pKF2->GetRotation();
     cv::Mat t2w = pKF2->GetTranslation();
-    cv::Mat C2 = R2w*Cw+t2w;
+    cv::Mat C2 = R2w*Cw+t2w;                            //第一关键帧的相机光心在第二帧下的坐标
     const float invz = 1.0f/C2.at<float>(2);
-    const float ex =pKF2->fx*C2.at<float>(0)*invz+pKF2->cx;
-    const float ey =pKF2->fy*C2.at<float>(1)*invz+pKF2->cy;
+    const float ex =pKF2->fx*C2.at<float>(0)*invz+pKF2->cx;         //在第二帧下的像素坐标x
+    const float ey =pKF2->fy*C2.at<float>(1)*invz+pKF2->cy;         //在第二帧下的像素坐标y
 
     // Find matches between not tracked keypoints
     // Matching speed-up by ORB Vocabulary

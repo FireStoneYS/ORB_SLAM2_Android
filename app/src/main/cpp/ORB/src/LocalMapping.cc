@@ -155,6 +155,7 @@ void LocalMapping::ProcessNewKeyFrame()
     mpCurrentKeyFrame->ComputeBoW();
 
     // Associate MapPoints to the new keyframe and update normal and descriptor
+    //获取TrackLocalMap中匹配到的mappoint
     const vector<MapPoint*> vpMapPointMatches = mpCurrentKeyFrame->GetMapPointMatches();
 
     for(size_t i=0; i<vpMapPointMatches.size(); i++)
@@ -271,7 +272,7 @@ void LocalMapping::CreateNewMapPoints()
         }
         else
         {
-            const float medianDepthKF2 = pKF2->ComputeSceneMedianDepth(2);
+            const float medianDepthKF2 = pKF2->ComputeSceneMedianDepth(2);  //计算关键帧坐标系下的mappoint中值
             const float ratioBaselineDepth = baseline/medianDepthKF2;
 
             if(ratioBaselineDepth<0.01)
@@ -553,6 +554,10 @@ void LocalMapping::SearchInNeighbors()
 
 cv::Mat LocalMapping::ComputeF12(KeyFrame *&pKF1, KeyFrame *&pKF2)
 {
+
+    // Essential Matrix: t12叉乘R12
+    // Fundamental Matrix: inv(K1)*E*inv(K2)
+
     cv::Mat R1w = pKF1->GetRotation();
     cv::Mat t1w = pKF1->GetTranslation();
     cv::Mat R2w = pKF2->GetRotation();
