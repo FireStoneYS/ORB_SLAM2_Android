@@ -478,16 +478,17 @@ void KeyFrame::SetBadFlag()
         }
     }
 
-    for(map<KeyFrame*,int>::iterator mit = mConnectedKeyFrameWeights.begin(), mend=mConnectedKeyFrameWeights.end(); mit!=mend; mit++)
+    for(map<KeyFrame*,int>::iterator mit = mConnectedKeyFrameWeights.begin(), mend=mConnectedKeyFrameWeights.end(); mit!=mend; mit++)       //删除其他关键帧与当前帧的联系
         mit->first->EraseConnection(this);
 
     for(size_t i=0; i<mvpMapPoints.size(); i++)
         if(mvpMapPoints[i])
-            mvpMapPoints[i]->EraseObservation(this);
+            mvpMapPoints[i]->EraseObservation(this);        //让与自己有联系的mappoint删除与自身的联系
     {
         unique_lock<mutex> lock(mMutexConnections);
         unique_lock<mutex> lock1(mMutexFeatures);
 
+        //清空自己与其他关键帧的联系
         mConnectedKeyFrameWeights.clear();
         mvpOrderedConnectedKeyFrames.clear();
 
@@ -497,6 +498,7 @@ void KeyFrame::SetBadFlag()
 
         // Assign at each iteration one children with a parent (the pair with highest covisibility weight)
         // Include that children as new parent candidate for the rest
+        //让子关键帧取寻找新的父关键帧
         while(!mspChildrens.empty())
         {
             bool bContinue = false;
@@ -513,7 +515,7 @@ void KeyFrame::SetBadFlag()
 
                 // Check if a parent candidate is connected to the keyframe
                 vector<KeyFrame*> vpConnected = pKF->GetVectorCovisibleKeyFrames();
-                for(size_t i=0, iend=vpConnected.size(); i<iend; i++)
+                for(size_t i=0, iend=vpConnected.size(); i<iend; i++)           //子帧遍历相连关键帧，是否在备选父关键帧里，如果有多个取权重最大的作为父关键帧
                 {
                     for(set<KeyFrame*>::iterator spcit=sParentCandidates.begin(), spcend=sParentCandidates.end(); spcit!=spcend; spcit++)
                     {
@@ -534,8 +536,11 @@ void KeyFrame::SetBadFlag()
 
             if(bContinue)
             {
+                //子帧更换父帧
                 pC->ChangeParent(pP);
+                //子帧升级为备选父帧
                 sParentCandidates.insert(pC);
+                //从当前帧的子集中删除子帧
                 mspChildrens.erase(pC);
             }
             else
@@ -543,14 +548,15 @@ void KeyFrame::SetBadFlag()
         }
 
         // If a children has no covisibility links with any parent candidate, assign to the original parent of this KF
+        //如果说还有没有父帧的，就直接把原来当前帧的父帧作为父帧
         if(!mspChildrens.empty())
             for(set<KeyFrame*>::iterator sit=mspChildrens.begin(); sit!=mspChildrens.end(); sit++)
             {
                 (*sit)->ChangeParent(mpParent);
             }
-
+        //父帧子集中删除本帧
         mpParent->EraseChild(this);
-        mTcp = Tcw*mpParent->GetPoseInverse();
+        mTcp = Tcw*mpParent->GetPoseInverse();  //父帧位姿到当前帧位姿的变换
         mbBad = true;
     }
 

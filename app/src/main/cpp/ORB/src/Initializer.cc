@@ -752,7 +752,7 @@ bool Initializer::ReconstructH(vector<bool> &vbMatchesInliers, cv::Mat &H21, cv:
 
     return false;
 }
-//中文版多视图几何P317线性三角形法
+//中文版多视图几何P217线性三角形法
     // 两个点:
 // |yp2   -  p1  |     |0|
 // |p0    -  xp2 | X = |0| ===> AX = 0

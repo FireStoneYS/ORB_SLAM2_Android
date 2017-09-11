@@ -68,7 +68,7 @@ void LoopClosing::Run()
     {
         // Check if there are keyframes in the queue
         LOGE("Check New Key Frames");
-        if(CheckNewKeyFrames())
+        if(CheckNewKeyFrames())     //如果Localmap中传来新的帧
         {
             // Detect loop candidates and check covisibility consistency
             LOGE("Detect  Loop");
@@ -134,7 +134,7 @@ bool LoopClosing::DetectLoop()
     const vector<KeyFrame*> vpConnectedKeyFrames = mpCurrentKF->GetVectorCovisibleKeyFrames();
     const DBoW2::BowVector &CurrentBowVec = mpCurrentKF->mBowVec;
     float minScore = 1;
-    for(size_t i=0; i<vpConnectedKeyFrames.size(); i++)
+    for(size_t i=0; i<vpConnectedKeyFrames.size(); i++)         //计算当前帧与相连帧的最小得分
     {
         KeyFrame* pKF = vpConnectedKeyFrames[i];
         if(pKF->isBad())
@@ -148,9 +148,11 @@ bool LoopClosing::DetectLoop()
     }
 
     // Query the database imposing the minimum score
+    //在所有关键帧中找出闭环备选帧
     vector<KeyFrame*> vpCandidateKFs = mpKeyFrameDB->DetectLoopCandidates(mpCurrentKF, minScore);
 
     // If there are no loop candidates, just add new keyframe and return false
+    //
     if(vpCandidateKFs.empty())
     {
         mpKeyFrameDB->add(mpCurrentKF);
@@ -165,6 +167,10 @@ bool LoopClosing::DetectLoop()
     // We must detect a consistent loop in several consecutive keyframes to accept it
     mvpEnoughConsistentCandidates.clear();
 
+    //在候选帧中检测具有连续性的候选帧
+    // 1、每个候选帧将与自己相连的关键帧构成一个“子候选组spCandidateGroup”，vpCandidateKFs-->spCandidateGroup
+    // 2、检测“子候选组”中每一个关键帧是否存在于“连续组”，如果存在nCurrentConsistency++，则将该“子候选组”放入“当前连续组vCurrentConsistentGroups”
+    // 3、如果nCurrentConsistency大于等于3，那么该”子候选组“代表的候选帧过关，进入mvpEnoughConsistentCandidates
     vector<ConsistentGroup> vCurrentConsistentGroups;
     vector<bool> vbConsistentGroup(mvConsistentGroups.size(),false);
     for(size_t i=0, iend=vpCandidateKFs.size(); i<iend; i++)
@@ -201,7 +207,7 @@ bool LoopClosing::DetectLoop()
                     vCurrentConsistentGroups.push_back(cg);
                     vbConsistentGroup[iG]=true; //this avoid to include the same group more than once
                 }
-                if(nCurrentConsistency>=mnCovisibilityConsistencyTh && !bEnoughConsistent)
+                if(nCurrentConsistency>=mnCovisibilityConsistencyTh && !bEnoughConsistent)      //子候选组代表的关键帧通过筛选加入到mvpEnoughConsistentCandidates
                 {
                     mvpEnoughConsistentCandidates.push_back(pCandidateKF);
                     bEnoughConsistent=true; //this avoid to insert the same candidate more than once

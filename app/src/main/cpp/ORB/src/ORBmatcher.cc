@@ -660,7 +660,7 @@ int ORBmatcher::SearchByBoW(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &
 
     return nmatches;
 }
-
+//两个关键帧进行匹配
 int ORBmatcher::SearchForTriangulation(KeyFrame *pKF1, KeyFrame *pKF2, cv::Mat F12,
                                        vector<pair<size_t, size_t> > &vMatchedPairs, const bool bOnlyStereo)
 {    
@@ -695,6 +695,8 @@ int ORBmatcher::SearchForTriangulation(KeyFrame *pKF1, KeyFrame *pKF2, cv::Mat F
     DBoW2::FeatureVector::const_iterator f1end = vFeatVec1.end();
     DBoW2::FeatureVector::const_iterator f2end = vFeatVec2.end();
 
+    //将左图像的每个特征点与右图像同一node节点的所有特征点
+    // 依次检测，判断是否满足对极几何约束，满足约束就是匹配的特征点
     while(f1it!=f1end && f2it!=f2end)
     {
         if(f1it->first == f2it->first)
@@ -751,7 +753,7 @@ int ORBmatcher::SearchForTriangulation(KeyFrame *pKF1, KeyFrame *pKF2, cv::Mat F
                     {
                         const float distex = ex-kp2.pt.x;
                         const float distey = ey-kp2.pt.y;
-                        if(distex*distex+distey*distey<100*pKF2->mvScaleFactors[kp2.octave])
+                        if(distex*distex+distey*distey<100*pKF2->mvScaleFactors[kp2.octave])    // 表明kp2对应的MapPoint距离pKF1相机太近
                             continue;
                     }
 
@@ -828,7 +830,9 @@ int ORBmatcher::SearchForTriangulation(KeyFrame *pKF1, KeyFrame *pKF2, cv::Mat F
 
     return nmatches;
 }
-
+//将临近关键帧与当前帧进行匹配
+// 1.如果MapPoint能匹配关键帧的特征点，并且该点有对应的MapPoint，那么将两个MapPoint合并（选择观测数多的）
+//2.如果MapPoint能匹配关键帧的特征点，并且该点没有对应的MapPoint，那么为该点添加MapPoint
 int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPoint *> &vpMapPoints, const float th)
 {
     cv::Mat Rcw = pKF->GetRotation();
@@ -888,7 +892,7 @@ int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPoint *> &vpMapPoints, const
         // Viewing angle must be less than 60 deg
         cv::Mat Pn = pMP->GetNormal();
 
-        if(PO.dot(Pn)<0.5*dist3D)
+        if(PO.dot(Pn)<0.5*dist3D)       //临近帧与当前帧的视差角小于60
             continue;
 
         int nPredictedLevel = pMP->PredictScale(dist3D,pKF);
@@ -918,6 +922,7 @@ int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPoint *> &vpMapPoints, const
             if(kpLevel<nPredictedLevel-1 || kpLevel>nPredictedLevel)
                 continue;
 
+            //计算重投影误差
             if(pKF->mvuRight[idx]>=0)
             {
                 // Check reprojection error in stereo
@@ -948,6 +953,7 @@ int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPoint *> &vpMapPoints, const
 
             const int dist = DescriptorDistance(dMP,dKF);
 
+            //取描述子最近的点
             if(dist<bestDist)
             {
                 bestDist = dist;
@@ -963,7 +969,7 @@ int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPoint *> &vpMapPoints, const
             {
                 if(!pMPinKF->isBad())
                 {
-                    if(pMPinKF->Observations()>pMP->Observations())
+                    if(pMPinKF->Observations()>pMP->Observations())     //选最佳匹配点中可被观测较多的去替代
                         pMP->Replace(pMPinKF);
                     else
                         pMPinKF->Replace(pMP);
@@ -1665,7 +1671,7 @@ int ORBmatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)
 
     int dist=0;
 
-    for(int i=0; i<8; i++, pa++, pb++)
+    for(int i=0; i<8; i++, pa++, pb++)      //每次取32位4字节，共取8次，共计32字节256位，对应256对点
     {
         unsigned  int v = *pa ^ *pb;            //异或求汉明距离
 

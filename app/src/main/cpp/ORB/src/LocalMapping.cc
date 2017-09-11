@@ -97,10 +97,10 @@ void LocalMapping::Run()
 
                 // Check redundant local Keyframes
                 LOGE(" Key Frame Culling !!!");
-                KeyFrameCulling();
+                KeyFrameCulling();  //剔除冗余关键帧
             }
             LOGE(" Insert Key Frame !!!");
-            mpLoopCloser->InsertKeyFrame(mpCurrentKeyFrame);
+            mpLoopCloser->InsertKeyFrame(mpCurrentKeyFrame);    //把当前帧插入到局部闭环检测队列里
         }
         else if(Stop())
         {
@@ -211,18 +211,23 @@ void LocalMapping::MapPointCulling()
             pMP->SetBadFlag();
             lit = mlpRecentAddedMapPoints.erase(lit);
         }
-        else if(((int)nCurrentKFid-(int)pMP->mnFirstKFid)>=2 && pMP->Observations()<=cnThObs)       //距第一次观测到该点的关键帧已经大于两帧，观测个数小于3(cnThObs)帧
+        else if(((int)nCurrentKFid-(int)pMP->mnFirstKFid)>=2 && pMP->Observations()<=cnThObs)       //距第一次观测到该点的关键帧已经过去两个关键帧，观测个数小于3(cnThObs)帧
         {
             pMP->SetBadFlag();
             lit = mlpRecentAddedMapPoints.erase(lit);
         }
-        else if(((int)nCurrentKFid-(int)pMP->mnFirstKFid)>=3)
+        else if(((int)nCurrentKFid-(int)pMP->mnFirstKFid)>=3)   //从建立该点开始，已经过了3个关键帧而没有被剔除，则认为是质量高的点
             lit = mlpRecentAddedMapPoints.erase(lit);
         else
             lit++;
     }
 }
-
+//提取公视关系最近的nn帧
+//与当前的关键帧进行特征匹配
+//然后三角化特征点的深度
+//将三角化的点封装为路标
+//将路标加入到备选路标点中
+//在下一次MapPointCulling里面去检验
 void LocalMapping::CreateNewMapPoints()
 {
     // Retrieve neighbor keyframes in covisibility graph
@@ -270,10 +275,10 @@ void LocalMapping::CreateNewMapPoints()
             if(baseline<pKF2->mb)      //如果两帧之间距离太近舍弃
             continue;
         }
-        else
+        else        //单目情况
         {
-            const float medianDepthKF2 = pKF2->ComputeSceneMedianDepth(2);  //计算关键帧坐标系下的mappoint中值
-            const float ratioBaselineDepth = baseline/medianDepthKF2;
+            const float medianDepthKF2 = pKF2->ComputeSceneMedianDepth(2);  //计算关键帧坐标系下的mappoint距离相机中值
+            const float ratioBaselineDepth = baseline/medianDepthKF2;       //如果两帧光心之间的距离小于距离中值的0.01就舍弃
 
             if(ratioBaselineDepth<0.01)
                 continue;
@@ -284,7 +289,7 @@ void LocalMapping::CreateNewMapPoints()
 
         // Search matches that fullfil epipolar constraint
         vector<pair<size_t,size_t> > vMatchedIndices;
-        matcher.SearchForTriangulation(mpCurrentKeyFrame,pKF2,F12,vMatchedIndices,false);
+        matcher.SearchForTriangulation(mpCurrentKeyFrame,pKF2,F12,vMatchedIndices,false);   //两关键帧通过词袋库筛选满足对极几何约束的匹配点
 
         cv::Mat Rcw2 = pKF2->GetRotation();
         cv::Mat Rwc2 = Rcw2.t();
@@ -316,12 +321,12 @@ void LocalMapping::CreateNewMapPoints()
             bool bStereo2 = kp2_ur>=0;
 
             // Check parallax between rays
-            cv::Mat xn1 = (cv::Mat_<float>(3,1) << (kp1.pt.x-cx1)*invfx1, (kp1.pt.y-cy1)*invfy1, 1.0);
-            cv::Mat xn2 = (cv::Mat_<float>(3,1) << (kp2.pt.x-cx2)*invfx2, (kp2.pt.y-cy2)*invfy2, 1.0);
+            cv::Mat xn1 = (cv::Mat_<float>(3,1) << (kp1.pt.x-cx1)*invfx1, (kp1.pt.y-cy1)*invfy1, 1.0);  //归一化平面上的点，可理解为光心指向点的向量
+            cv::Mat xn2 = (cv::Mat_<float>(3,1) << (kp2.pt.x-cx2)*invfx2, (kp2.pt.y-cy2)*invfy2, 1.0);  //归一化平面上的点，可理解为光心指向点的向量
 
-            cv::Mat ray1 = Rwc1*xn1;
-            cv::Mat ray2 = Rwc2*xn2;
-            const float cosParallaxRays = ray1.dot(ray2)/(cv::norm(ray1)*cv::norm(ray2));
+            cv::Mat ray1 = Rwc1*xn1;    //向量转到世界坐标下
+            cv::Mat ray2 = Rwc2*xn2;    //向量转到世界坐标下
+            const float cosParallaxRays = ray1.dot(ray2)/(cv::norm(ray1)*cv::norm(ray2));   //cos两向量夹角
 
             float cosParallaxStereo = cosParallaxRays+1;
             float cosParallaxStereo1 = cosParallaxStereo;
@@ -335,6 +340,9 @@ void LocalMapping::CreateNewMapPoints()
             cosParallaxStereo = min(cosParallaxStereo1,cosParallaxStereo2);
 
             cv::Mat x3D;
+            // cosParallaxRays>0 && (bStereo1 || bStereo2 || cosParallaxRays<0.9998)表明视差角正常
+            // cosParallaxRays<cosParallaxStereo表明视差角很小
+            // 视差角度小时用三角法恢复3D点，视差角大时用双目恢复3D点（双目以及深度有效）
             if(cosParallaxRays<cosParallaxStereo && cosParallaxRays>0 && (bStereo1 || bStereo2 || cosParallaxRays<0.9998))
             {
                 // Linear Triangulation Method
@@ -365,12 +373,12 @@ void LocalMapping::CreateNewMapPoints()
                 x3D = pKF2->UnprojectStereo(idx2);
             }
             else
-                continue; //No stereo and very low parallax
+                continue; //No stereo and very low parallax //单目且视差角小
 
             cv::Mat x3Dt = x3D.t();
 
             //Check triangulation in front of cameras
-            float z1 = Rcw1.row(2).dot(x3Dt)+tcw1.at<float>(2);
+            float z1 = Rcw1.row(2).dot(x3Dt)+tcw1.at<float>(2); //检查点在相机前
             if(z1<=0)
                 continue;
 
@@ -380,7 +388,7 @@ void LocalMapping::CreateNewMapPoints()
 
             //Check reprojection error in first keyframe
             const float &sigmaSquare1 = mpCurrentKeyFrame->mvLevelSigma2[kp1.octave];
-            const float x1 = Rcw1.row(0).dot(x3Dt)+tcw1.at<float>(0);
+            const float x1 = Rcw1.row(0).dot(x3Dt)+tcw1.at<float>(0);       //三角化后的点在相机坐标下的位置
             const float y1 = Rcw1.row(1).dot(x3Dt)+tcw1.at<float>(1);
             const float invz1 = 1.0/z1;
 
@@ -390,7 +398,7 @@ void LocalMapping::CreateNewMapPoints()
                 float v1 = fy1*y1*invz1+cy1;
                 float errX1 = u1 - kp1.pt.x;
                 float errY1 = v1 - kp1.pt.y;
-                if((errX1*errX1+errY1*errY1)>5.991*sigmaSquare1)
+                if((errX1*errX1+errY1*errY1)>5.991*sigmaSquare1)        //在第一帧下的重投影误差大于卡方误差
                     continue;
             }
             else
@@ -427,22 +435,22 @@ void LocalMapping::CreateNewMapPoints()
                 float errX2 = u2 - kp2.pt.x;
                 float errY2 = v2 - kp2.pt.y;
                 float errX2_r = u2_r - kp2_ur;
-                if((errX2*errX2+errY2*errY2+errX2_r*errX2_r)>7.8*sigmaSquare2)
+                if((errX2*errX2+errY2*errY2+errX2_r*errX2_r)>7.8*sigmaSquare2)  //在第二帧下的重投影误差大于卡方误差
                     continue;
             }
 
             //Check scale consistency
-            cv::Mat normal1 = x3D-Ow1;
-            float dist1 = cv::norm(normal1);
+            cv::Mat normal1 = x3D-Ow1;          //1的光心指向三角化的点
+            float dist1 = cv::norm(normal1);    //单位化
 
-            cv::Mat normal2 = x3D-Ow2;
-            float dist2 = cv::norm(normal2);
+            cv::Mat normal2 = x3D-Ow2;          //2的光心指向三角化的点
+            float dist2 = cv::norm(normal2);    //单位化
 
             if(dist1==0 || dist2==0)
                 continue;
 
             const float ratioDist = dist2/dist1;
-            const float ratioOctave = mpCurrentKeyFrame->mvScaleFactors[kp1.octave]/pKF2->mvScaleFactors[kp2.octave];
+            const float ratioOctave = mpCurrentKeyFrame->mvScaleFactors[kp1.octave]/pKF2->mvScaleFactors[kp2.octave];   //该点在1帧的尺度因子与在2帧尺度之比
 
             /*if(fabs(ratioDist-ratioOctave)>ratioFactor)
                 continue;*/
@@ -450,6 +458,11 @@ void LocalMapping::CreateNewMapPoints()
                 continue;
 
             // Triangulation is succesfull
+
+            //为该MapPoint添加属性：
+            // a.观测到该MapPoint的关键帧
+            // b.该MapPoint的描述子
+            // c.该MapPoint的平均观测方向和深度范围
             MapPoint* pMP = new MapPoint(x3D,mpCurrentKeyFrame,mpMap);
 
             pMP->AddObservation(mpCurrentKeyFrame,idx1);            
@@ -463,6 +476,9 @@ void LocalMapping::CreateNewMapPoints()
             pMP->UpdateNormalAndDepth();
 
             mpMap->AddMapPoint(pMP);
+
+            // 将新产生的点放入检测队列
+            // 这些MapPoints都会经过MapPointCulling函数的检验
             mlpRecentAddedMapPoints.push_back(pMP);
 
             nnew++;
@@ -481,7 +497,7 @@ void LocalMapping::SearchInNeighbors()
     for(vector<KeyFrame*>::const_iterator vit=vpNeighKFs.begin(), vend=vpNeighKFs.end(); vit!=vend; vit++)
     {
         KeyFrame* pKFi = *vit;
-        if(pKFi->isBad() || pKFi->mnFuseTargetForKF == mpCurrentKeyFrame->mnId)
+        if(pKFi->isBad() || pKFi->mnFuseTargetForKF == mpCurrentKeyFrame->mnId) //跳过重复的关键帧
             continue;
         vpTargetKFs.push_back(pKFi);
         pKFi->mnFuseTargetForKF = mpCurrentKeyFrame->mnId;
@@ -491,7 +507,7 @@ void LocalMapping::SearchInNeighbors()
         for(vector<KeyFrame*>::const_iterator vit2=vpSecondNeighKFs.begin(), vend2=vpSecondNeighKFs.end(); vit2!=vend2; vit2++)
         {
             KeyFrame* pKFi2 = *vit2;
-            if(pKFi2->isBad() || pKFi2->mnFuseTargetForKF==mpCurrentKeyFrame->mnId || pKFi2->mnId==mpCurrentKeyFrame->mnId)
+            if(pKFi2->isBad() || pKFi2->mnFuseTargetForKF==mpCurrentKeyFrame->mnId || pKFi2->mnId==mpCurrentKeyFrame->mnId) //跳过重复的关键帧
                 continue;
             vpTargetKFs.push_back(pKFi2);
         }
@@ -512,7 +528,7 @@ void LocalMapping::SearchInNeighbors()
     vector<MapPoint*> vpFuseCandidates;
     vpFuseCandidates.reserve(vpTargetKFs.size()*vpMapPointMatches.size());
 
-    for(vector<KeyFrame*>::iterator vitKF=vpTargetKFs.begin(), vendKF=vpTargetKFs.end(); vitKF!=vendKF; vitKF++)
+    for(vector<KeyFrame*>::iterator vitKF=vpTargetKFs.begin(), vendKF=vpTargetKFs.end(); vitKF!=vendKF; vitKF++)        //提取用于融合的备选点
     {
         KeyFrame* pKFi = *vitKF;
 
@@ -530,10 +546,11 @@ void LocalMapping::SearchInNeighbors()
         }
     }
 
-    matcher.Fuse(mpCurrentKeyFrame,vpFuseCandidates);
+    matcher.Fuse(mpCurrentKeyFrame,vpFuseCandidates);   //将当前关键帧的点与备选点进行匹配融合
 
 
     // Update points
+    //更新当前帧MapPoints的描述子，深度，观测主方向等属性
     vpMapPointMatches = mpCurrentKeyFrame->GetMapPointMatches();
     for(size_t i=0, iend=vpMapPointMatches.size(); i<iend; i++)
     {
@@ -549,6 +566,7 @@ void LocalMapping::SearchInNeighbors()
     }
 
     // Update connections in covisibility graph
+    //更新与其他帧的联系
     mpCurrentKeyFrame->UpdateConnections();
 }
 
@@ -653,15 +671,23 @@ void LocalMapping::InterruptBA()
 {
     mbAbortBA = true;
 }
-
+/**
+ *
+ *
+ * 在Covisibility Graph中的关键帧，其90%以上的MapPoints能被其他关键帧（至少3个）观测到，则认为该关键帧为冗余关键帧。
+ *
+ */
 void LocalMapping::KeyFrameCulling()
 {
     // Check redundant keyframes (only local keyframes)
     // A keyframe is considered redundant if the 90% of the MapPoints it sees, are seen
     // in at least other 3 keyframes (in the same or finer scale)
     // We only consider close stereo points
-    vector<KeyFrame*> vpLocalKeyFrames = mpCurrentKeyFrame->GetVectorCovisibleKeyFrames();
+    vector<KeyFrame*> vpLocalKeyFrames = mpCurrentKeyFrame->GetVectorCovisibleKeyFrames();      //取出当前帧的公视帧，放入vpLocalKeyFrames
 
+    //遍历vpLocalKeyFrames
+    //如果关键帧观测路标90%可被其他三个关键帧看到
+    //将当前关键帧从局部地图中剔除
     for(vector<KeyFrame*>::iterator vit=vpLocalKeyFrames.begin(), vend=vpLocalKeyFrames.end(); vit!=vend; vit++)
     {
         KeyFrame* pKF = *vit;
@@ -716,7 +742,7 @@ void LocalMapping::KeyFrameCulling()
         }  
 
         if(nRedundantObservations>0.9*nMPs)
-            pKF->SetBadFlag();
+            pKF->SetBadFlag();      //剔除关键帧
     }
 }
 
