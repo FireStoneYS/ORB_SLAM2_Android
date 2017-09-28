@@ -486,11 +486,11 @@ void LoopClosing::CorrectLoop()
 
             if(pKFi!=mpCurrentKF)
             {
-                cv::Mat Tic = Tiw*Twc;
+                cv::Mat Tic = Tiw*Twc;                              //当前帧到相邻关键帧坐标下的变换
                 cv::Mat Ric = Tic.rowRange(0,3).colRange(0,3);
                 cv::Mat tic = Tic.rowRange(0,3).col(3);
                 g2o::Sim3 g2oSic(Converter::toMatrix3d(Ric),Converter::toVector3d(tic),1.0);
-                g2o::Sim3 g2oCorrectedSiw = g2oSic*mg2oScw;
+                g2o::Sim3 g2oCorrectedSiw = g2oSic*mg2oScw;         //经过sim3矫正后世界坐标到相邻关键帧的变换
                 //Pose corrected with the Sim3 of the loop closure
                 CorrectedSim3[pKFi]=g2oCorrectedSiw;
             }
@@ -499,7 +499,7 @@ void LoopClosing::CorrectLoop()
             cv::Mat tiw = Tiw.rowRange(0,3).col(3);
             g2o::Sim3 g2oSiw(Converter::toMatrix3d(Riw),Converter::toVector3d(tiw),1.0);
             //Pose without correction
-            NonCorrectedSim3[pKFi]=g2oSiw;
+            NonCorrectedSim3[pKFi]=g2oSiw;      //未矫正过的变换
         }
 
         // Correct all MapPoints obsrved by current keyframe and neighbors, so that they align with the other side of the loop
@@ -524,8 +524,8 @@ void LoopClosing::CorrectLoop()
 
                 // Project with non-corrected pose and project back with corrected pose
                 cv::Mat P3Dw = pMPi->GetWorldPos();
-                Eigen::Matrix<double,3,1> eigP3Dw = Converter::toVector3d(P3Dw);
-                Eigen::Matrix<double,3,1> eigCorrectedP3Dw = g2oCorrectedSwi.map(g2oSiw.map(eigP3Dw));
+                Eigen::Matrix<double,3,1> eigP3Dw = Converter::toVector3d(P3Dw);                        //路标点世界坐标
+                Eigen::Matrix<double,3,1> eigCorrectedP3Dw = g2oCorrectedSwi.map(g2oSiw.map(eigP3Dw));  //矫正后的世界坐标  将路标经未校正的sim3变换到相邻帧中，然后再进过矫正后的sim3变换至世界坐标中
 
                 cv::Mat cvCorrectedP3Dw = Converter::toCvMat(eigCorrectedP3Dw);
                 pMPi->SetWorldPos(cvCorrectedP3Dw);
