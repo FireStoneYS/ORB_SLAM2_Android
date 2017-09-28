@@ -61,7 +61,7 @@ Sim3Solver::Sim3Solver(KeyFrame *pKF1, KeyFrame *pKF2, const vector<MapPoint *> 
     size_t idx=0;
     for(int i1=0; i1<mN1; i1++)
     {
-        if(vpMatched12[i1])
+        if(vpMatched12[i1])     //存的是候选帧的特征点，下标为当前帧的索引
         {
             MapPoint* pMP1 = vpKeyFrameMP1[i1];
             MapPoint* pMP2 = vpMatched12[i1];
@@ -72,6 +72,7 @@ Sim3Solver::Sim3Solver(KeyFrame *pKF1, KeyFrame *pKF2, const vector<MapPoint *> 
             if(pMP1->isBad() || pMP2->isBad())
                 continue;
 
+            // indexKF1和indexKF2是匹配特征点的索引
             int indexKF1 = pMP1->GetIndexInKeyFrame(pKF1);
             int indexKF2 = pMP2->GetIndexInKeyFrame(pKF2);
 
@@ -87,15 +88,16 @@ Sim3Solver::Sim3Solver(KeyFrame *pKF1, KeyFrame *pKF2, const vector<MapPoint *> 
             mvnMaxError1.push_back(9.210*sigmaSquare1);
             mvnMaxError2.push_back(9.210*sigmaSquare2);
 
+            //把匹配的特征点放进去
             mvpMapPoints1.push_back(pMP1);
             mvpMapPoints2.push_back(pMP2);
             mvnIndices1.push_back(i1);
 
             cv::Mat X3D1w = pMP1->GetWorldPos();
-            mvX3Dc1.push_back(Rcw1*X3D1w+tcw1);
+            mvX3Dc1.push_back(Rcw1*X3D1w+tcw1);     //存的是1帧坐标系下的三维坐标（当前帧）
 
             cv::Mat X3D2w = pMP2->GetWorldPos();
-            mvX3Dc2.push_back(Rcw2*X3D2w+tcw2);
+            mvX3Dc2.push_back(Rcw2*X3D2w+tcw2);     //存的是2帧坐标系下的三维坐标（闭环候选帧）
 
             mvAllIndices.push_back(idx);
             idx++;
@@ -105,10 +107,10 @@ Sim3Solver::Sim3Solver(KeyFrame *pKF1, KeyFrame *pKF2, const vector<MapPoint *> 
     mK1 = pKF1->mK;
     mK2 = pKF2->mK;
 
-    FromCameraToImage(mvX3Dc1,mvP1im1,mK1);
+    FromCameraToImage(mvX3Dc1,mvP1im1,mK1); //相机坐标到像素坐标下的转换
     FromCameraToImage(mvX3Dc2,mvP2im2,mK2);
 
-    SetRansacParameters();
+    SetRansacParameters();      //RANSAC参数置信度0.99，最低inlier6，最大迭代次数300
 }
 
 void Sim3Solver::SetRansacParameters(double probability, int minInliers, int maxIterations)
@@ -157,8 +159,8 @@ cv::Mat Sim3Solver::iterate(int nIterations, bool &bNoMore, vector<bool> &vbInli
     int nCurrentIterations = 0;
     while(mnIterations<mRansacMaxIts && nCurrentIterations<nIterations)
     {
-        nCurrentIterations++;
-        mnIterations++;
+        nCurrentIterations++;       //此次迭代中的迭代次数
+        mnIterations++;             //总的迭代次数
 
         vAvailableIndices = mvAllIndices;
 
@@ -169,14 +171,14 @@ cv::Mat Sim3Solver::iterate(int nIterations, bool &bNoMore, vector<bool> &vbInli
 
             int idx = vAvailableIndices[randi];
 
-            mvX3Dc1[idx].copyTo(P3Dc1i.col(i));
-            mvX3Dc2[idx].copyTo(P3Dc2i.col(i));
+            mvX3Dc1[idx].copyTo(P3Dc1i.col(i));     //当前帧坐标系下三个点的坐标作为列
+            mvX3Dc2[idx].copyTo(P3Dc2i.col(i));     //候选帧坐标系下三个点的坐标作为列
 
-            vAvailableIndices[randi] = vAvailableIndices.back();
+            vAvailableIndices[randi] = vAvailableIndices.back();        //在index容器里删除当前点的index
             vAvailableIndices.pop_back();
         }
 
-        ComputeSim3(P3Dc1i,P3Dc2i);
+        ComputeSim3(P3Dc1i,P3Dc2i);     //计算sim3
 
         CheckInliers();
 
@@ -189,7 +191,7 @@ cv::Mat Sim3Solver::iterate(int nIterations, bool &bNoMore, vector<bool> &vbInli
             mBestTranslation = mt12i.clone();
             mBestScale = ms12i;
 
-            if(mnInliersi>mRansacMinInliers)
+            if(mnInliersi>mRansacMinInliers)// 只要计算得到一次合格的Sim变换，就直接返回
             {
                 nInliers = mnInliersi;
                 for(int i=0; i<N; i++)
@@ -214,10 +216,10 @@ cv::Mat Sim3Solver::find(vector<bool> &vbInliers12, int &nInliers)
 
 void Sim3Solver::ComputeCentroid(cv::Mat &P, cv::Mat &Pr, cv::Mat &C)
 {
-    cv::reduce(P,C,1,CV_REDUCE_SUM);
-    C = C/P.cols;
+    cv::reduce(P,C,1,CV_REDUCE_SUM);        //将矩阵reduce为一列，方法为求三列的和
+    C = C/P.cols;                             //求三列的均值，即P中三点的中心
 
-    for(int i=0; i<P.cols; i++)
+    for(int i=0; i<P.cols; i++)         //Pr中放着距中心三点的偏移量
     {
         Pr.col(i)=P.col(i)-C;
     }
@@ -235,12 +237,12 @@ void Sim3Solver::ComputeSim3(cv::Mat &P1, cv::Mat &P2)
     cv::Mat O1(3,1,Pr1.type()); // Centroid of P1
     cv::Mat O2(3,1,Pr2.type()); // Centroid of P2
 
-    ComputeCentroid(P1,Pr1,O1);
-    ComputeCentroid(P2,Pr2,O2);
+    ComputeCentroid(P1,Pr1,O1);     //Pr1三点距中心O1的偏移量
+    ComputeCentroid(P2,Pr2,O2);     //Pr2三点距中心O2的偏移量
 
     // Step 2: Compute M matrix
 
-    cv::Mat M = Pr2*Pr1.t();
+    cv::Mat M = Pr2*Pr1.t();        //M =Pr2*Pr1转置
 
     // Step 3: Compute N matrix
 
@@ -269,35 +271,41 @@ void Sim3Solver::ComputeSim3(cv::Mat &P1, cv::Mat &P2)
 
     cv::Mat eval, evec;
 
+
+    //求对称矩阵的特征值，N必须为对称矩阵，eval为输出的特征值向量、行递减，evec为输出的对应特征向量
+    //对称矩阵就是 转置等于本身
     cv::eigen(N,eval,evec); //evec[0] is the quaternion of the desired rotation
 
+    //最大特征值对应的特征向量
     cv::Mat vec(1,3,evec.type());
     (evec.row(0).colRange(1,4)).copyTo(vec); //extract imaginary part of the quaternion (sin*axis)
 
     // Rotation angle. sin is the norm of the imaginary part, cos is the real part
-    double ang=atan2(norm(vec),evec.at<float>(0,0));
+    double ang=atan2(norm(vec),evec.at<float>(0,0));    //虚部为sin(angle/2)，实部为cos(angle/2)
 
+    //旋转向量
     vec = 2*ang*vec/norm(vec); //Angle-axis representation. quaternion angle is the half
 
     mR12i.create(3,3,P1.type());
 
+    //罗德里格斯变换得到旋转矩阵 候选帧到当前帧的变换
     cv::Rodrigues(vec,mR12i); // computes the rotation matrix from angle-axis
 
     // Step 5: Rotate set 2
 
-    cv::Mat P3 = mR12i*Pr2;
+    cv::Mat P3 = mR12i*Pr2;     //将候选帧的三点坐标旋转到当前帧下
 
     // Step 6: Scale
 
-    if(!mbFixScale)
+    if(!mbFixScale)         //单目需要计算尺度，双目和RGB则不需要
     {
-        double nom = Pr1.dot(P3);
+        double nom = Pr1.dot(P3);       //对应吴博PPT中公式（12）
         cv::Mat aux_P3(P3.size(),P3.type());
         aux_P3=P3;
-        cv::pow(P3,2,aux_P3);
+        cv::pow(P3,2,aux_P3);   //P3的平方放到aux_P3中
         double den = 0;
 
-        for(int i=0; i<aux_P3.rows; i++)
+        for(int i=0; i<aux_P3.rows; i++)        //遍历求和
         {
             for(int j=0; j<aux_P3.cols; j++)
             {
@@ -313,7 +321,7 @@ void Sim3Solver::ComputeSim3(cv::Mat &P1, cv::Mat &P2)
     // Step 7: Translation
 
     mt12i.create(1,3,P1.type());
-    mt12i = O1 - ms12i*mR12i*O2;
+    mt12i = O1 - ms12i*mR12i*O2;    //O1 - O2乘以旋转和尺度 获得候选帧到当前帧的平移矩阵
 
     // Step 8: Transformation
 
@@ -336,19 +344,19 @@ void Sim3Solver::ComputeSim3(cv::Mat &P1, cv::Mat &P2)
     tinv.copyTo(mT21i.rowRange(0,3).col(3));
 }
 
-
+//记录投影误差距离小于阈值的点
 void Sim3Solver::CheckInliers()
 {
     vector<cv::Mat> vP1im2, vP2im1;
-    Project(mvX3Dc2,vP2im1,mT12i,mK1);
-    Project(mvX3Dc1,vP1im2,mT21i,mK2);
+    Project(mvX3Dc2,vP2im1,mT12i,mK1);      //将候选帧下坐标投影到当前帧下    像素坐标放到vP2im1中
+    Project(mvX3Dc1,vP1im2,mT21i,mK2);      //将当前帧下坐标投影到候选帧下    像素坐标放到vP1im2中
 
     mnInliersi=0;
 
     for(size_t i=0; i<mvP1im1.size(); i++)
     {
-        cv::Mat dist1 = mvP1im1[i]-vP2im1[i];
-        cv::Mat dist2 = vP1im2[i]-mvP2im2[i];
+        cv::Mat dist1 = mvP1im1[i]-vP2im1[i];       //当前帧中投影误差
+        cv::Mat dist2 = vP1im2[i]-mvP2im2[i];       //候选帧中投影误差
 
         const float err1 = dist1.dot(dist1);
         const float err2 = dist2.dot(dist2);
